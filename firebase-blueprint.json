@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with approval state.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "approverCode": { "type": "string" },
+        "lastLogin": { "type": "number" }
+      },
+      "required": ["email", "name"]
+    },
+    "Secret": {
+      "title": "Secret",
+      "description": "Golden codes for access.",
+      "type": "object",
+      "properties": {
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "isActive": { "type": "boolean" }
+      }
+    },
+    "AdminConfig": {
+      "title": "Admin",
+      "description": "Admin users by uid.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profiles."
+    },
+    "/secrets/{secretId}": {
+      "schema": { "$ref": "#/entities/Secret" },
+      "description": "Valid golden codes."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminConfig" },
+      "description": "List of active admins."
+    }
+  }
+}

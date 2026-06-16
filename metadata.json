@@ -1,0 +1,6 @@
+{
+  "name": "Khmer Google Sheets Admin School",
+  "description": "ការរៀននិងបង្កើតប្រព័ន្ធរដ្ឋបាល Google Sheets, គណនាប្រាក់ខែ, គ្រប់គ្រងបុគ្គលិក និងផ្ញើសារស្វ័យប្រវត្តិតាម Telegram (Interactive Khmer educational app for Google Sheets administration, payroll, and Telegram notifications).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
