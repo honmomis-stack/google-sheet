@@ -1192,8 +1192,8 @@ ${columnsMessageScript}
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-        <Loader2 className="w-8 h-8 text-green-600 animate-spin mb-4" />
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex flex-col items-center justify-center p-4">
+        <Loader2 className="w-8 h-8 text-emerald-600 animate-spin mb-4" />
         <p className="text-slate-500">កំពុងពិនិត្យគណនីរបស់អ្នកពិត... (Loading...)</p>
       </div>
     );
@@ -1201,20 +1201,25 @@ ${columnsMessageScript}
 
   if (!user && !isGuest) {
     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-900">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+        <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-white to-teal-50 flex items-center justify-center p-4 font-sans text-slate-900 relative overflow-hidden">
+          {/* soft brand glow */}
+          <div className="pointer-events-none absolute -top-24 -left-24 w-80 h-80 bg-emerald-200/40 rounded-full blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -right-24 w-80 h-80 bg-teal-200/40 rounded-full blur-3xl" />
+
+          <div className="max-w-md w-full bg-white/90 backdrop-blur rounded-3xl shadow-2xl shadow-emerald-900/10 ring-1 ring-emerald-100/80 overflow-hidden relative">
+            <div className="h-1.5 bg-gradient-to-r from-emerald-400 via-green-500 to-teal-500" />
             <div className="p-8 space-y-6">
               <div className="text-center space-y-2">
-                <div className="mx-auto w-16 h-16 bg-green-50 text-green-600 rounded-full flex items-center justify-center mb-4 border border-green-100 shadow-inner">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center mb-4 shadow-lg shadow-emerald-500/30">
                   <Database className="w-8 h-8" />
                 </div>
-                <h1 className="text-2xl font-bold text-slate-800">សាលាខ្មែរ Google Sheets</h1>
+                <h1 className="text-2xl font-bold text-slate-800 tracking-tight">សាលាខ្មែរ Google Sheets</h1>
                 <p className="text-slate-500 text-sm">សូមចូលគណនី Gmail របស់អ្នក</p>
               </div>
 
-              <button 
-                onClick={handleGoogleLogin} 
-                className="w-full py-3 px-4 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+              <button
+                onClick={handleGoogleLogin}
+                className="w-full py-3 px-4 bg-white border-2 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50 text-slate-700 rounded-xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm"
               >
                 <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
                 ចូលគណនីជាមួយ Google
@@ -1228,14 +1233,14 @@ ${columnsMessageScript}
 
               <button
                 onClick={() => setIsGuest(true)}
-                className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-all active:scale-95"
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white rounded-xl font-bold transition-all active:scale-95 shadow-lg shadow-emerald-500/25"
               >
                 សាកល្បងជាភ្ញៀវ — ៥ លំហាត់ឥតគិតថ្លៃ
               </button>
 
-              <div className="text-center bg-slate-50 p-3 rounded-lg border border-slate-100">
-                 <p className="text-xs text-slate-500">
-                    ភ្ញៀវប្រើបាន ៥ លំហាត់ដំបូងឥតគិតថ្លៃ។ ចង់រៀនពេញ? <strong>ទិញឯកសារ $9.9</strong> តាម ABA Payway → ទទួលលេខកូដមាសតាម Telegram → Login ជាមួយ Google។
+              <div className="text-center bg-emerald-50/70 p-3 rounded-xl border border-emerald-100">
+                 <p className="text-xs text-slate-600 leading-relaxed">
+                    ភ្ញៀវប្រើបាន ៥ លំហាត់ដំបូងឥតគិតថ្លៃ។ ចង់រៀនពេញ? <strong className="text-emerald-700">ទិញឯកសារ $9.9</strong> តាម ABA Payway → ទទួលលេខកូដមាសតាម Telegram → Login ជាមួយ Google។
                  </p>
               </div>
             </div>
@@ -1246,12 +1251,14 @@ ${columnsMessageScript}
 
   if (user && !isApproved) {
      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-900">
-          <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100 relative">
-            
+        <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-emerald-50 flex items-center justify-center p-4 font-sans text-slate-900 relative overflow-hidden">
+          <div className="pointer-events-none absolute -top-24 -left-24 w-80 h-80 bg-amber-200/40 rounded-full blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-24 -right-24 w-80 h-80 bg-emerald-200/40 rounded-full blur-3xl" />
+          <div className="max-w-md w-full bg-white/90 backdrop-blur rounded-3xl shadow-2xl shadow-amber-900/10 ring-1 ring-amber-100/80 overflow-hidden relative">
+            <div className="h-1.5 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500" />
             <div className="p-8 space-y-6">
               <div className="text-center space-y-2">
-                <div className="mx-auto w-16 h-16 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mb-4 border border-amber-100 shadow-inner">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center mb-4 shadow-lg shadow-amber-500/30">
                   <Lock className="w-8 h-8" />
                 </div>
                 <h1 className="text-2xl font-bold text-slate-800">ផ្ទៀងផ្ទាត់សិទ្ធិ (Access Code)</h1>
