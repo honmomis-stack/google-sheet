@@ -248,11 +248,9 @@ export default function App() {
     }
   };
 
-  // Send a code through the shared reankh.org bot (server-side) so it arrives
-  // as a tap-to-copy <code> message. Recipient must have started the bot first.
+  // Bot-deliver the code to the ADMIN's own Telegram (tap-to-copy <code>); the
+  // admin then forwards it to the student. No per-student chat id needed.
   const sendCodeViaBot = async (code: string) => {
-    const chatId = window.prompt("បញ្ចូល Telegram Chat ID របស់អ្នកទទួល (ជាលេខ)៖\n(អ្នកទទួលត្រូវ Start bot reankh.org ជាមុនសិន)");
-    if (!chatId || !chatId.trim()) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -260,10 +258,10 @@ export default function App() {
       const res = await fetch("/api/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ code, chatId: chatId.trim() }),
+        body: JSON.stringify({ code }),
       });
       const j = await res.json().catch(() => ({}));
-      if (res.ok && j.ok) alert(`ផ្ញើកូដ ${code} ជោគជ័យ! (tap-to-copy នៅ Telegram)`);
+      if (res.ok && j.ok) alert(`ផ្ញើកូដ ${code} ទៅ Telegram admin ជោគជ័យ!\nសូម forward សារនោះបន្តទៅសិស្ស (tap-to-copy នៅដដែល)។`);
       else alert("ផ្ញើមិនបាន៖ " + (j.error || res.statusText));
     } catch (e) {
       console.error(e);
@@ -3061,7 +3059,7 @@ ${columnsMessageScript}
                                      <button
                                        onClick={() => sendCodeViaBot(gc.code)}
                                        className="flex items-center gap-1 bg-[#229ED9] hover:bg-[#1E8CC0] text-white px-2 py-1.5 rounded text-xs font-semibold shadow-sm transition active:scale-95"
-                                       title="ផ្ញើតាម Bot reankh.org (tap-to-copy)"
+                                       title="ផ្ញើទៅ Telegram admin (tap-to-copy) → admin forward បន្តទៅសិស្ស"
                                      >
                                        <Send className="w-3.5 h-3.5" />
                                        ផ្ញើ Bot

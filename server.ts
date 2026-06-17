@@ -30,15 +30,19 @@ const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL |
 const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 const APP_URL = process.env.APP_URL || "https://google-sheet.reankh.org/";
 const ADMIN_EMAILS = ["hon.mom.is@gmail.com", "hon.mom.edu@gmail.com"];
+// Codes are bot-delivered to the ADMIN's own chat; the admin then forwards the
+// (tap-to-copy) message on to the student. A forward keeps the <code> entity.
+const ADMIN_CHAT_ID = (process.env.ADMIN_TELEGRAM_ID || (process.env.ADMIN_TELEGRAM_IDS || "").split(",")[0] || "").trim();
 
 app.post("/api/send-code", async (req, res) => {
   try {
     const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
-    const { code, chatId } = (req.body || {}) as { code?: string; chatId?: string };
+    const { code } = (req.body || {}) as { code?: string };
 
     if (!TELEGRAM_BOT_TOKEN) return res.status(500).json({ error: "TELEGRAM_BOT_TOKEN not configured on the server" });
+    if (!ADMIN_CHAT_ID) return res.status(500).json({ error: "ADMIN_TELEGRAM_ID not configured on the server" });
     if (!token) return res.status(401).json({ error: "Missing auth token" });
-    if (!code || !chatId) return res.status(400).json({ error: "code and chatId are required" });
+    if (!code) return res.status(400).json({ error: "code is required" });
 
     // Verify the caller is an admin via their Supabase access token.
     const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -62,7 +66,7 @@ app.post("/api/send-code", async (req, res) => {
     const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+      body: JSON.stringify({ chat_id: ADMIN_CHAT_ID, text, parse_mode: "HTML" }),
     });
     const tg = (await tgRes.json()) as { ok?: boolean; description?: string };
     if (!tg.ok) {
