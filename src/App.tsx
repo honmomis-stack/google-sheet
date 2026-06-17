@@ -241,32 +241,46 @@ export default function App() {
       });
       if (error) throw error;
       fetchGoldenCodes();
-      alert(`បានបង្កើតលេខកូដថ្មីដោយជោគជ័យ៖ ${newCode}`);
+      // Auto-deliver the new code to the admin's Telegram (tap-to-copy) so the
+      // admin can forward it to the student without a second click.
+      const sent = await postSendCode(newCode);
+      alert(
+        sent.ok
+          ? `បានបង្កើតលេខកូដ ${newCode} ✓\nផ្ញើទៅ Telegram admin រួចរាល់ — សូម forward បន្តទៅសិស្ស។`
+          : `បានបង្កើតលេខកូដ ${newCode} ✓\n(ផ្ញើ Telegram មិនបាន៖ ${sent.error})`
+      );
     } catch (e) {
       console.error(e);
       alert("បរាជ័យក្នុងការបង្កើតលេខកូដ");
     }
   };
 
-  // Bot-deliver the code to the ADMIN's own Telegram (tap-to-copy <code>); the
-  // admin then forwards it to the student. No per-student chat id needed.
-  const sendCodeViaBot = async (code: string) => {
+  // Core: bot-deliver a code to the admin's own Telegram (tap-to-copy <code>);
+  // the admin then forwards it to the student. Returns the outcome so callers
+  // (the per-row button AND auto-send on generate) can surface it their own way.
+  const postSendCode = async (code: string): Promise<{ ok: boolean; error?: string }> => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
-      if (!token) { alert("សម័យចូលផុតកំណត់ — សូម Login ឡើងវិញ។"); return; }
+      if (!token) return { ok: false, error: "សម័យចូលផុតកំណត់ — សូម Login ឡើងវិញ។" };
       const res = await fetch("/api/send-code", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ code }),
       });
       const j = await res.json().catch(() => ({}));
-      if (res.ok && j.ok) alert(`ផ្ញើកូដ ${code} ទៅ Telegram admin ជោគជ័យ!\nសូម forward សារនោះបន្តទៅសិស្ស (tap-to-copy នៅដដែល)។`);
-      else alert("ផ្ញើមិនបាន៖ " + (j.error || res.statusText));
+      if (res.ok && j.ok) return { ok: true };
+      return { ok: false, error: j.error || res.statusText };
     } catch (e) {
       console.error(e);
-      alert("ផ្ញើមិនបាន — បញ្ហាបណ្ដាញ។");
+      return { ok: false, error: "បញ្ហាបណ្ដាញ" };
     }
+  };
+
+  const sendCodeViaBot = async (code: string) => {
+    const r = await postSendCode(code);
+    if (r.ok) alert(`ផ្ញើកូដ ${code} ទៅ Telegram admin ជោគជ័យ!\nសូម forward សារនោះបន្តទៅសិស្ស (tap-to-copy នៅដដែល)។`);
+    else alert("ផ្ញើមិនបាន៖ " + r.error);
   };
 
   const fetchGoldenCodes = async () => {
