@@ -2966,7 +2966,7 @@ ${columnsMessageScript}
                                </td>
                                <td className="p-3">
                                   <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs whitespace-nowrap">
-                                    {student.lastLogin ? new Date(student.lastLogin.toDate?.() || student.lastLogin).toLocaleDateString() : 'សកម្ម'}
+                                    {student.last_login ? new Date(student.last_login).toLocaleDateString() : 'សកម្ម'}
                                   </span>
                                </td>
                              </tr>
@@ -3000,26 +3000,26 @@ ${columnsMessageScript}
                          </thead>
                          <tbody className="divide-y divide-slate-100">
                            {goldenCodes.map((gc) => (
-                             <tr key={gc.id} className="hover:bg-slate-50">
+                             <tr key={gc.code} className="hover:bg-slate-50">
                                <td className="p-3">
-                                 <div className="font-mono font-bold text-amber-600">{gc.id}</div>
-                                 <div className="text-[10px] text-slate-400">បង្កើត: {gc.createdAt ? new Date(gc.createdAt).toLocaleDateString() : ''}</div>
+                                 <div className="font-mono font-bold text-amber-600">{gc.code}</div>
+                                 <div className="text-[10px] text-slate-400">បង្កើត: {gc.created_at ? new Date(gc.created_at).toLocaleDateString() : ''}</div>
                                </td>
                                <td className="p-3">
-                                 {gc.isActive !== false ? (
+                                 {gc.status === 'active' ? (
                                    <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold">ទំនេរ / មិនទាន់ប្រើ</span>
                                  ) : (
                                    <div className="flex flex-col">
                                      <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold w-fit mb-1">បានប្រើរួច</span>
-                                     <span className="text-[10px] text-slate-500 line-clamp-1">{gc.usedBy}</span>
+                                     <span className="text-[10px] text-slate-500 line-clamp-1">{gc.used_by}</span>
                                    </div>
                                  )}
                                </td>
                                <td className="p-3">
-                                 {gc.isActive !== false && (
-                                   <button 
+                                 {gc.status === 'active' && (
+                                   <button
                                      onClick={() => {
-                                       const text = `🎉 សួស្តី! នេះគឺជា *លេខកូដសម្ងាត់មាស (Golden Code)* អញ្ជើញចូលប្រើប្រាស់ប្រព័ន្ធកម្រិតខ្ពស់ សាលាខ្មែរ Google Sheets:\n\n🔑 កូដរបស់អ្នក៖ ${gc.id}\n\n👉 របៀបចូលប្រើ៖\n១. ចូលទៅកាន់ម៉ឺនុយកម្មវិធី\n២. ចូលប្រើគណនី Gmail របស់អ្នក\n៣. បញ្ចូលលេខកូដខាងលើដើម្បីទទួលបានសិទ្ធិពេញលេញ\n\n(បញ្ជាក់៖ លេខកូដនេះប្រើបានតែ ១ លើកប៉ុណ្ណោះ។ លើកក្រោយមិនតម្រូវឱ្យប្រើកូដទៀតទេ)`;
+                                       const text = `🎉 សួស្តី! នេះគឺជា *លេខកូដសម្ងាត់មាស (Golden Code)* អញ្ជើញចូលប្រើប្រាស់ប្រព័ន្ធកម្រិតខ្ពស់ សាលាខ្មែរ Google Sheets:\n\n🔑 កូដរបស់អ្នក៖ ${gc.code}\n\n👉 របៀបចូលប្រើ៖\n១. ចូលទៅកាន់ម៉ឺនុយកម្មវិធី\n២. ចូលប្រើគណនី Gmail របស់អ្នក\n៣. បញ្ចូលលេខកូដខាងលើដើម្បីទទួលបានសិទ្ធិពេញលេញ\n\n(បញ្ជាក់៖ លេខកូដនេះប្រើបានតែ ១ លើកប៉ុណ្ណោះ។ លើកក្រោយមិនតម្រូវឱ្យប្រើកូដទៀតទេ)`;
                                        const url = `https://t.me/share/url?url=${encodeURIComponent(text)}`;
                                        window.open(url, "_blank");
                                      }}
