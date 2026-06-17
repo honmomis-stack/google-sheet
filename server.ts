@@ -20,6 +20,61 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok", mode: process.env.NODE_ENV });
 });
 
+// ── Send a golden code to Telegram via the shared reankh.org bot ────────────
+// Uses the SAME bot token as reankh.org (set TELEGRAM_BOT_TOKEN on the host).
+// The code is wrapped in <code>…</code> so Telegram renders it tap-to-copy.
+// Guarded by the caller's Supabase admin JWT so it can't be used as an open
+// relay. Body: { code, chatId }. Authorization: Bearer <supabase access_token>.
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const APP_URL = process.env.APP_URL || "https://google-sheet.reankh.org/";
+const ADMIN_EMAILS = ["hon.mom.is@gmail.com", "hon.mom.edu@gmail.com"];
+
+app.post("/api/send-code", async (req, res) => {
+  try {
+    const token = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+    const { code, chatId } = (req.body || {}) as { code?: string; chatId?: string };
+
+    if (!TELEGRAM_BOT_TOKEN) return res.status(500).json({ error: "TELEGRAM_BOT_TOKEN not configured on the server" });
+    if (!token) return res.status(401).json({ error: "Missing auth token" });
+    if (!code || !chatId) return res.status(400).json({ error: "code and chatId are required" });
+
+    // Verify the caller is an admin via their Supabase access token.
+    const userRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON },
+    });
+    if (!userRes.ok) return res.status(401).json({ error: "Invalid session — please log in again" });
+    const u = (await userRes.json()) as { email?: string };
+    if (!ADMIN_EMAILS.includes((u.email || "").toLowerCase())) {
+      return res.status(403).json({ error: "Admin only" });
+    }
+
+    // <code>…</code> → tap-to-copy in Telegram.
+    const text =
+      `🎉 <b>លេខកូដសម្ងាត់មាស (Golden Code)</b>\n` +
+      `សាលាខ្មែរ Google Sheets\n\n` +
+      `🔑 កូដរបស់អ្នក (ចុចលើកូដ ដើម្បីចម្លង)៖\n<code>${code}</code>\n\n` +
+      `🔗 តំណចូល៖ ${APP_URL}\n\n` +
+      `👉 ① ចូលតំណខាងលើ → ② Login ដោយ Gmail → ③ បញ្ចូលកូដខាងលើ\n` +
+      `⚠️ កូដនេះប្រើបានតែ ១ ដងប៉ុណ្ណោះ។`;
+
+    const tgRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    });
+    const tg = (await tgRes.json()) as { ok?: boolean; description?: string };
+    if (!tg.ok) {
+      return res.status(502).json({ error: tg.description || "Telegram rejected the message (user may not have started the bot)" });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("[/api/send-code]", err);
+    return res.status(500).json({ error: "Send failed" });
+  }
+});
+
 
 // Vite & Static file serving setup
 async function setupVite() {

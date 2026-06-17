@@ -248,6 +248,29 @@ export default function App() {
     }
   };
 
+  // Send a code through the shared reankh.org bot (server-side) so it arrives
+  // as a tap-to-copy <code> message. Recipient must have started the bot first.
+  const sendCodeViaBot = async (code: string) => {
+    const chatId = window.prompt("បញ្ចូល Telegram Chat ID របស់អ្នកទទួល (ជាលេខ)៖\n(អ្នកទទួលត្រូវ Start bot reankh.org ជាមុនសិន)");
+    if (!chatId || !chatId.trim()) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) { alert("សម័យចូលផុតកំណត់ — សូម Login ឡើងវិញ។"); return; }
+      const res = await fetch("/api/send-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code, chatId: chatId.trim() }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok && j.ok) alert(`ផ្ញើកូដ ${code} ជោគជ័យ! (tap-to-copy នៅ Telegram)`);
+      else alert("ផ្ញើមិនបាន៖ " + (j.error || res.statusText));
+    } catch (e) {
+      console.error(e);
+      alert("ផ្ញើមិនបាន — បញ្ហាបណ្ដាញ។");
+    }
+  };
+
   const fetchGoldenCodes = async () => {
     try {
       const { data, error } = await supabase.from('gsheet_codes').select('*').order('created_at', { ascending: false });
@@ -3036,15 +3059,12 @@ ${columnsMessageScript}
                                        ចម្លង
                                      </button>
                                      <button
-                                       onClick={() => {
-                                         const url = `https://t.me/share/url?url=${encodeURIComponent(buildGoldenCodeMessage(gc.code))}`;
-                                         window.open(url, "_blank");
-                                       }}
+                                       onClick={() => sendCodeViaBot(gc.code)}
                                        className="flex items-center gap-1 bg-[#229ED9] hover:bg-[#1E8CC0] text-white px-2 py-1.5 rounded text-xs font-semibold shadow-sm transition active:scale-95"
-                                       title="ផ្ញើចូល Telegram"
+                                       title="ផ្ញើតាម Bot reankh.org (tap-to-copy)"
                                      >
                                        <Send className="w-3.5 h-3.5" />
-                                       ផ្ញើផ្ដល់សិទ្ធិ
+                                       ផ្ញើ Bot
                                      </button>
                                    </div>
                                  )}
