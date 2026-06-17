@@ -160,8 +160,14 @@ const exportHTMLToPDF = async (elementId: string, filename: string = 'export.pdf
 
 // ── Guest mode (no-login): first 5 exercises free, then buy at reankh.org ──
 const REANKH_PRODUCT_URL = "https://reankh.org/products/22711f1f-9ea4-47ba-99f9-8ec222a01dde";
+const GSHEET_APP_URL = "https://google-sheet.reankh.org/";
 const GUEST_FREE_LIMIT = 5;
 const GUEST_TABS = ["practice-easy", "practice-medium", "practice-advanced"];
+
+// One source of truth for the golden-code message — used by both the "Copy"
+// and "send to Telegram" actions so the access link is always included.
+const buildGoldenCodeMessage = (code: string) =>
+  `🎉 សួស្តី! នេះគឺជា *លេខកូដសម្ងាត់មាស (Golden Code)* អញ្ជើញចូលប្រើប្រាស់ប្រព័ន្ធកម្រិតខ្ពស់ សាលាខ្មែរ Google Sheets:\n\n🔑 កូដរបស់អ្នក៖ ${code}\n\n🔗 តំណចូល៖ ${GSHEET_APP_URL}\n\n👉 របៀបចូលប្រើ៖\n១. ចូលទៅកាន់តំណខាងលើ\n២. ចូលប្រើគណនី Gmail របស់អ្នក\n៣. បញ្ចូលលេខកូដខាងលើដើម្បីទទួលបានសិទ្ធិពេញលេញ\n\n(បញ្ជាក់៖ លេខកូដនេះប្រើបានតែ ១ លើកប៉ុណ្ណោះ។ លើកក្រោយមិនតម្រូវឱ្យប្រើកូដទៀតទេ)`;
 
 export default function App() {
   // Authentication State
@@ -3017,18 +3023,30 @@ ${columnsMessageScript}
                                </td>
                                <td className="p-3">
                                  {gc.status === 'active' && (
-                                   <button
-                                     onClick={() => {
-                                       const text = `🎉 សួស្តី! នេះគឺជា *លេខកូដសម្ងាត់មាស (Golden Code)* អញ្ជើញចូលប្រើប្រាស់ប្រព័ន្ធកម្រិតខ្ពស់ សាលាខ្មែរ Google Sheets:\n\n🔑 កូដរបស់អ្នក៖ ${gc.code}\n\n👉 របៀបចូលប្រើ៖\n១. ចូលទៅកាន់ម៉ឺនុយកម្មវិធី\n២. ចូលប្រើគណនី Gmail របស់អ្នក\n៣. បញ្ចូលលេខកូដខាងលើដើម្បីទទួលបានសិទ្ធិពេញលេញ\n\n(បញ្ជាក់៖ លេខកូដនេះប្រើបានតែ ១ លើកប៉ុណ្ណោះ។ លើកក្រោយមិនតម្រូវឱ្យប្រើកូដទៀតទេ)`;
-                                       const url = `https://t.me/share/url?url=${encodeURIComponent(text)}`;
-                                       window.open(url, "_blank");
-                                     }}
-                                     className="flex items-center gap-1 bg-[#229ED9] hover:bg-[#1E8CC0] text-white px-2 py-1.5 rounded text-xs font-semibold shadow-sm transition active:scale-95"
-                                     title="ផ្ញើចូល Telegram"
-                                   >
-                                     <Send className="w-3.5 h-3.5" />
-                                     ផ្ញើផ្ដល់សិទ្ធិ
-                                   </button>
+                                   <div className="flex items-center gap-1.5">
+                                     <button
+                                       onClick={() => {
+                                         navigator.clipboard.writeText(buildGoldenCodeMessage(gc.code));
+                                         alert("បានចម្លងសារ (កូដ + តំណ) ដោយជោគជ័យ!");
+                                       }}
+                                       className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white px-2 py-1.5 rounded text-xs font-semibold shadow-sm transition active:scale-95"
+                                       title="ចម្លងសារ (កូដ + តំណ)"
+                                     >
+                                       <Copy className="w-3.5 h-3.5" />
+                                       ចម្លង
+                                     </button>
+                                     <button
+                                       onClick={() => {
+                                         const url = `https://t.me/share/url?url=${encodeURIComponent(buildGoldenCodeMessage(gc.code))}`;
+                                         window.open(url, "_blank");
+                                       }}
+                                       className="flex items-center gap-1 bg-[#229ED9] hover:bg-[#1E8CC0] text-white px-2 py-1.5 rounded text-xs font-semibold shadow-sm transition active:scale-95"
+                                       title="ផ្ញើចូល Telegram"
+                                     >
+                                       <Send className="w-3.5 h-3.5" />
+                                       ផ្ញើផ្ដល់សិទ្ធិ
+                                     </button>
+                                   </div>
                                  )}
                                </td>
                              </tr>
