@@ -65,6 +65,7 @@ import { jsPDF } from "jspdf";
 
 import { supabase } from "./supabase";
 import { User } from "@supabase/supabase-js";
+import { evaluateFormula } from "./data/formulaEngine";
 
 const checkFormulaSyntax = (formula: string): string | null => {
   if (!formula.trim()) return null;
@@ -748,15 +749,12 @@ ${columnsMessageScript}
     if (formsCorrect.includes(cleanedInput)) {
       setQuestStatus("correct");
       
-      // Calculate simulation result
-      if (quest.id === "quest-sum") {
-        const sum = quest.tableData.reduce((acc, row) => acc + row.salary, 0);
-        setSandboxResult(`$${sum}.00`);
-      } else if (quest.id === "quest-if") {
-        setSandboxResult("$50.00 (បុគ្គលិកទទួលបានប្រាក់បន្ថែម)");
-      } else if (quest.id === "quest-countif") {
-        setSandboxResult("2 (ថ្ងៃវត្តមាន)");
-      }
+      // Compute the real result with the formula engine, from the canonical
+      // correct answer. Some quests use array/chart functions (UNIQUE/SORT/
+      // FILTER/QUERY/SPARKLINE…) that have no single scalar value — for those
+      // we celebrate the correct formula without showing a computed cell value.
+      const evalRes = evaluateFormula(quest.correctAnswers[0], quest.tableData);
+      setSandboxResult(evalRes.ok ? evalRes.display : null);
       
       // Add lesson to completed
       if (!completedLessons.includes(quest.id)) {
@@ -1936,7 +1934,7 @@ ${columnsMessageScript}
                     {questStatus === "correct" && (
                       <div className="bg-emerald-950/40 border border-emerald-900/60 p-3 rounded-lg text-xs text-emerald-300 flex items-center gap-2">
                         <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span>អស្ចារ្យណាស់ប្អូន! រូបមន្តពិតជាត្រឹមត្រូវ ហើយតម្លៃគណនាគឺ {sandboxResult}។</span>
+                        <span>អស្ចារ្យណាស់ប្អូន! រូបមន្តពិតជាត្រឹមត្រូវ{sandboxResult ? <> ហើយតម្លៃគណនាគឺ <b className="text-emerald-200">{sandboxResult}</b></> : ""}។</span>
                       </div>
                     )}
 

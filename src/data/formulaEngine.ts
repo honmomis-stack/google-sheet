@@ -15,8 +15,30 @@ export interface FormulaResult {
   error?: string;
 }
 
-type Range = CellValue[];
+// A range keeps its shape (w×h) so 2-D lookups (VLOOKUP/INDEX/HLOOKUP) work.
+// Values are stored column-major: index = col * h + row.
+type Range = CellValue[] & { w?: number; h?: number };
 type EvalValue = CellValue | Range;
+
+// Spreadsheet error sentinels — returned (not thrown) so IFERROR can catch them.
+const NA = "#N/A";
+const VALUE_ERR = "#VALUE!";
+const ERRORS = ["#N/A", "#VALUE!", "#REF!", "#DIV/0!", "#ERROR!", "#NAME?"];
+const isErr = (v: EvalValue): boolean => typeof v === "string" && ERRORS.includes(v);
+
+const rangeGet = (range: Range, row0: number, col0: number): CellValue => {
+  const h = range.h ?? range.length;
+  const v = range[col0 * h + row0];
+  return v === undefined ? null : v;
+};
+
+// Minimal TEXT()/number-format: enough for "$#,##0.00", "0.00", "0%".
+const formatText = (n: number, fmt: string): string => {
+  const decimals = (fmt.split(".")[1] || "").replace(/[^0#]/g, "").length;
+  if (fmt.includes("%")) return (n * 100).toFixed(decimals) + "%";
+  const body = n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return fmt.includes("$") ? "$" + body : body;
+};
 
 const colLetter = (n: number): string => {
   let s = "";
@@ -211,6 +233,110 @@ function callFunction(name: string, args: EvalValue[]): EvalValue {
     }
     case "CONCATENATE":
     case "CONCAT": return flatCells(args).map((v) => toStr(v)).join("");
+
+    // ── extra math/stat ──────────────────────────────────────────────────
+    case "MEDIAN": {
+      const n = flatNumbers(args).sort((a, b) => a - b);
+      if (!n.length) return 0;
+      const mid = Math.floor(n.length / 2);
+      return n.length % 2 ? n[mid] : (n[mid - 1] + n[mid]) / 2;
+    }
+    case "COUNTBLANK": return flatCells(args).filter((v) => v === null || v === "").length;
+    case "INT": return Math.floor(toNum(args[0]));
+    case "MOD": return toNum(args[0]) % toNum(args[1]);
+    case "POWER": return Math.pow(toNum(args[0]), toNum(args[1]));
+    case "SQRT": return Math.sqrt(toNum(args[0]));
+    case "ROUNDUP": { const f = Math.pow(10, args[1] !== undefined ? toNum(args[1]) : 0); return Math.ceil(toNum(args[0]) * f) / f; }
+    case "ROUNDDOWN": { const f = Math.pow(10, args[1] !== undefined ? toNum(args[1]) : 0); return Math.trunc(toNum(args[0]) * f) / f; }
+
+    // ── multi-criteria ───────────────────────────────────────────────────
+    case "SUMIFS": case "COUNTIFS": case "AVERAGEIFS": {
+      const counting = fn === "COUNTIFS";
+      const valRange = counting ? null : (args[0] as Range);
+      const critStart = counting ? 0 : 1;
+      const ref = (counting ? (args[0] as Range) : valRange) as Range;
+      const picked: number[] = [];
+      let count = 0;
+      for (let i = 0; i < ref.length; i++) {
+        let ok = true;
+        for (let a = critStart; a + 1 < args.length; a += 2) {
+          if (!matchCriteria((args[a] as Range)[i], args[a + 1] as CellValue)) { ok = false; break; }
+        }
+        if (!ok) continue;
+        count++;
+        if (valRange) { const s = valRange[i]; if (typeof s === "number") picked.push(s); else if (typeof s === "string" && !isNaN(Number(s))) picked.push(Number(s)); }
+      }
+      if (counting) return count;
+      if (fn === "SUMIFS") return picked.reduce((a, b) => a + b, 0);
+      return picked.length ? picked.reduce((a, b) => a + b, 0) / picked.length : 0;
+    }
+    case "SUMPRODUCT": {
+      const ranges = args.map((a) => (Array.isArray(a) ? a : [a]));
+      const len = Math.max(...ranges.map((r) => r.length));
+      let total = 0;
+      for (let i = 0; i < len; i++) {
+        let prod = 1;
+        for (const r of ranges) { const v = r.length === 1 ? r[0] : r[i]; prod *= typeof v === "number" ? v : Number(v) || 0; }
+        total += prod;
+      }
+      return total;
+    }
+
+    // ── lookup ───────────────────────────────────────────────────────────
+    case "VLOOKUP": {
+      const range = args[1] as Range, h = range.h ?? range.length, col = toNum(args[2]);
+      for (let r = 0; r < h; r++) if (resultsEqual(range[r], args[0] as CellValue)) return rangeGet(range, r, col - 1);
+      return NA;
+    }
+    case "HLOOKUP": {
+      const range = args[1] as Range, w = range.w ?? range.length, row = toNum(args[2]);
+      for (let c = 0; c < w; c++) if (resultsEqual(rangeGet(range, 0, c), args[0] as CellValue)) return rangeGet(range, row - 1, c);
+      return NA;
+    }
+    case "INDEX": {
+      if (isErr(args[1]) || isErr(args[2])) return NA;
+      const range = args[0] as Range;
+      return rangeGet(range, toNum(args[1]) - 1, (args[2] !== undefined ? toNum(args[2]) : 1) - 1);
+    }
+    case "MATCH": case "XMATCH": {
+      const range = args[1] as Range;
+      for (let i = 0; i < range.length; i++) if (resultsEqual(range[i], args[0] as CellValue)) return i + 1;
+      return NA;
+    }
+    case "XLOOKUP": {
+      const lookup = args[1] as Range, ret = args[2] as Range;
+      for (let i = 0; i < lookup.length; i++) if (resultsEqual(lookup[i], args[0] as CellValue)) return ret[i] ?? NA;
+      return args[3] !== undefined ? (args[3] as CellValue) : NA;
+    }
+
+    // ── error/info ───────────────────────────────────────────────────────
+    case "IFERROR": return isErr(args[0]) ? (args[1] as CellValue) : (args[0] as CellValue);
+    case "ISERROR": return isErr(args[0]);
+    case "ISBLANK": return args[0] === null || args[0] === "";
+    case "ISNUMBER": return typeof args[0] === "number";
+    case "ISTEXT": return typeof args[0] === "string" && !isErr(args[0]);
+
+    // ── text ─────────────────────────────────────────────────────────────
+    case "MID": return toStr(args[0] as CellValue).substr(Math.max(0, toNum(args[1]) - 1), toNum(args[2]));
+    case "PROPER": return toStr(args[0] as CellValue).replace(/\S+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    case "REPT": return toStr(args[0] as CellValue).repeat(Math.max(0, toNum(args[1])));
+    case "SUBSTITUTE": return toStr(args[0] as CellValue).split(toStr(args[1] as CellValue)).join(toStr(args[2] as CellValue));
+    case "REPLACE": { const s = toStr(args[0] as CellValue), st = toNum(args[1]), ln = toNum(args[2]); return s.slice(0, st - 1) + toStr(args[3] as CellValue) + s.slice(st - 1 + ln); }
+    case "FIND": { const idx = toStr(args[1] as CellValue).indexOf(toStr(args[0] as CellValue)); return idx < 0 ? VALUE_ERR : idx + 1; }
+    case "SEARCH": { const idx = toStr(args[1] as CellValue).toLowerCase().indexOf(toStr(args[0] as CellValue).toLowerCase()); return idx < 0 ? VALUE_ERR : idx + 1; }
+    case "EXACT": return toStr(args[0] as CellValue) === toStr(args[1] as CellValue);
+    case "VALUE": return toNum(args[0]);
+    case "TEXTJOIN": {
+      const delim = toStr(args[0] as CellValue), ignoreEmpty = truthy(args[1]);
+      return flatCells(args.slice(2)).map((v) => toStr(v)).filter((s) => !ignoreEmpty || s !== "").join(delim);
+    }
+    case "HYPERLINK": return toStr((args[1] !== undefined ? args[1] : args[0]) as CellValue);
+    case "TEXT": return formatText(toNum(args[0]), toStr(args[1] as CellValue));
+
+    // ── date (display only) ──────────────────────────────────────────────
+    case "TODAY": return new Date().toLocaleDateString("en-GB");
+    case "NOW": return new Date().toLocaleString("en-GB");
+
     default: throw new Error("មិនទាន់គាំទ្ររូបមន្ត៖ " + name + "()");
   }
 }
@@ -234,12 +360,16 @@ function parse(tokens: Tok[], grid: Record<string, CellValue>): EvalValue {
     const pb = b.toUpperCase().match(/^([A-Z]+)([0-9]+)$/)!;
     const c1 = pa[1].charCodeAt(0), c2 = pb[1].charCodeAt(0);
     const r1 = parseInt(pa[2], 10), r2 = parseInt(pb[2], 10);
+    const cLo = Math.min(c1, c2), cHi = Math.max(c1, c2);
+    const rLo = Math.min(r1, r2), rHi = Math.max(r1, r2);
     const out: Range = [];
-    for (let c = Math.min(c1, c2); c <= Math.max(c1, c2); c++) {
-      for (let r = Math.min(r1, r2); r <= Math.max(r1, r2); r++) {
+    for (let c = cLo; c <= cHi; c++) {
+      for (let r = rLo; r <= rHi; r++) {
         out.push(cellValue(String.fromCharCode(c) + r));
       }
     }
+    out.w = cHi - cLo + 1;
+    out.h = rHi - rLo + 1;
     return out;
   };
 
