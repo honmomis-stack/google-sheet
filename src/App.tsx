@@ -158,6 +158,11 @@ const exportHTMLToPDF = async (elementId: string, filename: string = 'export.pdf
   }
 };
 
+// ── Guest mode (no-login): first 5 exercises free, then buy at reankh.org ──
+const REANKH_PRODUCT_URL = "https://reankh.org/products/22711f1f-9ea4-47ba-99f9-8ec222a01dde";
+const GUEST_FREE_LIMIT = 5;
+const GUEST_TABS = ["practice-easy", "practice-medium", "practice-advanced"];
+
 export default function App() {
   // Authentication State
   const [user, setUser] = useState<User | null>(null);
@@ -178,6 +183,13 @@ export default function App() {
   const [telegramUsername, setTelegramUsername] = useState<string>("");
   const [generatedPurchasedCode, setGeneratedPurchasedCode] = useState<string>("");
 
+  // Guest mode + paywall (guest = not approved, no login required)
+  const [isGuest, setIsGuest] = useState<boolean>(false);
+  const [showPaywall, setShowPaywall] = useState<boolean>(false);
+  const [guestDone, setGuestDone] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("gsheet_guest_done") || "[]"); } catch { return []; }
+  });
+
   const simulateBakongPaymentAndSendCode = async () => {
     if (!user) return;
     setPurchaseStep(3); // Loading
@@ -186,7 +198,10 @@ export default function App() {
     setTimeout(async () => {
       try {
         const newCode = "G" + Math.random().toString(36).substring(2, 8).toUpperCase();
-        await supabase.from("secrets").insert({
+        // supabase-js does NOT throw on RLS/DB rejection — it returns { error }.
+        // If we don't check it, a silently-rejected insert still shows "Success"
+        // and hands the buyer a code that was never saved → redeem always fails.
+        const { error } = await supabase.from("gsheet_codes").insert({
           code: newCode,
           created_by: user.email,
           created_at: new Date().toISOString(),
@@ -194,6 +209,7 @@ export default function App() {
           used_by: null,
           used_at: null
         });
+        if (error) throw error;
         setGeneratedPurchasedCode(newCode);
         setPurchaseStep(4); // Success!
       } catch(e) {
@@ -208,12 +224,16 @@ export default function App() {
     if (!user) return;
     const newCode = "G" + Math.random().toString(36).substring(2, 8).toUpperCase();
     try {
-      await supabase.from("secrets").insert({
+      // supabase-js returns { error } on RLS/DB rejection instead of throwing.
+      // Without this check a blocked insert (e.g. admin not detected → RLS denies)
+      // would still report success and produce a code that isn't in the DB.
+      const { error } = await supabase.from("gsheet_codes").insert({
         code: newCode,
         created_by: user.email,
         created_at: new Date().toISOString(),
         status: 'active'
       });
+      if (error) throw error;
       fetchGoldenCodes();
       alert(`បានបង្កើតលេខកូដថ្មីដោយជោគជ័យ៖ ${newCode}`);
     } catch (e) {
@@ -224,7 +244,7 @@ export default function App() {
 
   const fetchGoldenCodes = async () => {
     try {
-      const { data, error } = await supabase.from('secrets').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('gsheet_codes').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       setGoldenCodes(data || []);
     } catch (e) {
@@ -234,7 +254,7 @@ export default function App() {
 
   const fetchAdminStats = async () => {
     try {
-      const { data: users, count, error } = await supabase.from('users').select('*', { count: 'exact' });
+      const { data: users, count, error } = await supabase.from('gsheet_profiles').select('*', { count: 'exact' });
       if (error) throw error;
       setTotalUsers(count || 0);
       
@@ -278,13 +298,13 @@ export default function App() {
              setIsAdmin(true);
              setIsApproved(true);
           } else {
-             const { data: adminDoc } = await supabase.from('admins').select('*').eq('id', currentUser.id).single();
+             const { data: adminDoc } = await supabase.from('gsheet_admins').select('*').eq('id', currentUser.id).maybeSingle();
              if (adminDoc) {
                setIsAdmin(true);
                setIsApproved(true);
              } else {
                setIsAdmin(false);
-               const { data: userDoc } = await supabase.from('users').select('*').eq('id', currentUser.id).single();
+               const { data: userDoc } = await supabase.from('gsheet_profiles').select('*').eq('id', currentUser.id).maybeSingle();
                if (userDoc && userDoc.is_approved) {
                  setIsApproved(true);
                } else {
@@ -308,7 +328,13 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     try {
-      await supabase.auth.signInWithOAuth({ provider: 'google' });
+      // Shared Supabase project with reankh.org → its Site URL is reankh.org, so
+      // WITHOUT redirectTo the OAuth callback bounces back to reankh.org. Pin the
+      // return to THIS site's origin (must also be in Supabase Auth → Redirect URLs).
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
     } catch (error) {
       console.error("Login failed:", error);
       alert("បរាជ័យក្នុងការចូលត៍ (Login failed)");
@@ -322,33 +348,36 @@ export default function App() {
     setAuthLoading(true);
 
     try {
-      const { data: secretSnap } = await supabase.from('secrets').select('*').eq('code', enteredCode.trim()).single();
-      
-      if (secretSnap && secretSnap.status === 'active') {
-        // Code is valid! Write this to the user's profile
-        await supabase.from('users').upsert({
-          id: user.id,
-          email: user.email,
-          name: user.user_metadata?.full_name || user.email?.split("@")[0] || "User",
-          is_approved: true,
-          approver_code: enteredCode.trim(),
-          last_login: new Date().toISOString()
-        });
-        
-        // Update the golden code to inactive
-        await supabase.from('secrets').update({
-          status: 'inactive',
-          used_by: user.email,
-          used_at: new Date().toISOString()
-        }).eq('code', enteredCode.trim());
+      // Redeem through the secure server-side function. The browser can NOT read
+      // the codes table (RLS denies it), so codes can't be harvested. The function
+      // validates the code, optionally checks the bound Gmail, marks it used, and
+      // approves this account — all atomically.
+      const { data, error } = await supabase.rpc('gsheet_redeem_code', {
+        p_code: enteredCode.trim(),
+      });
 
+      if (error) throw error;
+
+      // Diagnostic: surface exactly what the redeem RPC returned so a valid code
+      // that still fails (e.g. auth.uid() is null → 'not_authenticated') is
+      // distinguishable from a genuinely bad/used code.
+      console.log('[gsheet_redeem_code] response:', data);
+
+      if (data?.ok) {
         setIsApproved(true);
+      } else if (data?.error === 'email_mismatch') {
+        setCodeError("លេខកូដនេះ​ភ្ជាប់​នឹង Gmail ផ្សេង។ សូម​ចូល​ដោយ Gmail ដែល​បាន​ទិញ។");
+      } else if (data?.error === 'not_authenticated') {
+        // The code is fine — the session JWT didn't reach the server. Almost always
+        // the Google OAuth session wasn't established on THIS origin (shared
+        // Supabase: this site's URL must be in Auth → Redirect URLs).
+        setCodeError("សម័យ​ចូល​បាន​ផុត​កំណត់។ សូម​ចេញ ហើយ Login ជាមួយ Google ម្ដង​ទៀត។");
       } else {
-        setCodeError("លេខសម្ងាត់មាសមិនត្រឹមត្រូវ រឺ ត្រូវបានបិទ។");
+        setCodeError("លេខសម្ងាត់មាសមិនត្រឹមត្រូវ រឺ ត្រូវបានប្រើ​រួច។");
       }
     } catch (error) {
       console.error("Verification error:", error);
-      setCodeError("លេខសម្ងាត់មាសមិនត្រឹមត្រូវ។ (Invalid Code)");
+      setCodeError("មាន​បញ្ហា​ក្នុង​ការ​ផ្ទៀងផ្ទាត់។ សូម​ព្យាយាម​ម្ដង​ទៀត។");
     }
     setAuthLoading(false);
   };
@@ -369,6 +398,13 @@ export default function App() {
   const [questSearchQuery, setQuestSearchQuery] = useState<string>("");
   const [userFormula, setUserFormula] = useState<string>("");
   const [questStatus, setQuestStatus] = useState<"idle" | "correct" | "incorrect">("idle");
+
+  // Guests may only use the Practice tabs — bounce them off premium tabs.
+  useEffect(() => {
+    if (!isApproved && !GUEST_TABS.includes(activeTab)) {
+      setActiveTab(GUEST_TABS[0]);
+    }
+  }, [isApproved, activeTab]);
   const [sandboxResult, setSandboxResult] = useState<string | number | null>(null);
   const [showFormulaExamples, setShowFormulaExamples] = useState<boolean>(false);
   const [showAppScriptInline, setShowAppScriptInline] = useState<boolean>(false);
@@ -656,6 +692,13 @@ ${columnsMessageScript}
 
   const handleCheckFormula = () => {
     const quest = formulaQuests[selectedQuestIdx];
+
+    // Guest paywall: first GUEST_FREE_LIMIT exercises are free, then must buy.
+    if (!isApproved && !guestDone.includes(quest.id) && guestDone.length >= GUEST_FREE_LIMIT) {
+      setShowPaywall(true);
+      return;
+    }
+
     const cleanedInput = userFormula.trim().replace(/\s+/g, '');
     
     // Find matching correct answers (stripped whitespace)
@@ -677,6 +720,12 @@ ${columnsMessageScript}
       // Add lesson to completed
       if (!completedLessons.includes(quest.id)) {
         setCompletedLessons([...completedLessons, quest.id]);
+      }
+      // Track guest usage (persisted so a refresh can't reset the free quota)
+      if (!isApproved && !guestDone.includes(quest.id)) {
+        const next = [...guestDone, quest.id];
+        setGuestDone(next);
+        try { localStorage.setItem("gsheet_guest_done", JSON.stringify(next)); } catch { /* ignore */ }
       }
       showToast("🎉 អបអរសាទរ! រូបមន្តរបស់អ្នកត្រឹមត្រូវឥតខ្ចោះ!");
     } else {
@@ -1111,7 +1160,7 @@ ${columnsMessageScript}
     );
   }
 
-  if (!user) {
+  if (!user && !isGuest) {
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-900">
           <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
@@ -1132,9 +1181,22 @@ ${columnsMessageScript}
                 ចូលគណនីជាមួយ Google
               </button>
 
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-slate-200"></div>
+                <span className="shrink-0 px-3 text-slate-400 text-xs">ឬ (OR)</span>
+                <div className="flex-grow border-t border-slate-200"></div>
+              </div>
+
+              <button
+                onClick={() => setIsGuest(true)}
+                className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold transition-all active:scale-95"
+              >
+                សាកល្បងជាភ្ញៀវ — ៥ លំហាត់ឥតគិតថ្លៃ
+              </button>
+
               <div className="text-center bg-slate-50 p-3 rounded-lg border border-slate-100">
                  <p className="text-xs text-slate-500">
-                    អ្នកត្រូវមាន <strong>លេខកូដសម្ងាត់មាស</strong> ពី Admin ទើបអាចប្រើប្រាស់កម្មវិធីបានបន្ត។
+                    ភ្ញៀវប្រើបាន ៥ លំហាត់ដំបូងឥតគិតថ្លៃ។ ចង់រៀនពេញ? <strong>ទិញឯកសារ $9.9</strong> តាម ABA Payway → ទទួលលេខកូដមាសតាម Telegram → Login ជាមួយ Google។
                  </p>
               </div>
             </div>
@@ -1143,7 +1205,7 @@ ${columnsMessageScript}
     );
   }
 
-  if (!isApproved) {
+  if (user && !isApproved) {
      return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans text-slate-900">
           <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100 relative">
@@ -1185,13 +1247,13 @@ ${columnsMessageScript}
                 <div className="flex-grow border-t border-slate-200"></div>
               </div>
 
-              <button 
-                onClick={() => setShowPurchaseModal(true)}
+              <a
+                href={REANKH_PRODUCT_URL} target="_blank" rel="noopener noreferrer"
                 className="w-full py-2.5 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold shadow-md shadow-red-200 transition-all active:scale-95 flex justify-center items-center gap-2"
               >
-                 <span className="w-5 h-5 bg-white text-red-600 rounded-full flex items-center justify-center font-bold text-xs shrink-0">B</span> 
-                 ទិញដោយទូទាត់ប្រាក់តាម Bakong (10$)
-              </button>
+                 <span className="w-5 h-5 bg-white text-red-600 rounded-full flex items-center justify-center font-bold text-xs shrink-0">$</span>
+                 ទិញឯកសារមេរៀន $9.9 (តាម ABA Payway)
+              </a>
 
               <button 
                 onClick={handleLogout} 
@@ -1300,6 +1362,26 @@ ${columnsMessageScript}
         </div>
       )}
 
+      {/* Paywall — guest reached the free limit (or tapped Buy) */}
+      {showPaywall && (
+        <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowPaywall(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setShowPaywall(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto"><Lock className="w-8 h-8" /></div>
+            <h2 className="text-xl font-bold text-slate-800 text-center">ចង់រៀនបន្តពេញលេញ?</h2>
+            <p className="text-sm text-slate-500 text-center">
+              ភ្ញៀវប្រើបាន ៥ លំហាត់ឥតគិតថ្លៃ។ ដើម្បីបន្ត សូមទិញឯកសារមេរៀន។ បន្ទាប់ពីបង់ប្រាក់តាម ABA Payway ជោគជ័យ ប្រព័ន្ធផ្ញើ​លេខកូដ​មាស​ឲ្យ​អ្នក​តាម Telegram។
+            </p>
+            <a href={REANKH_PRODUCT_URL} target="_blank" rel="noopener noreferrer" className="w-full py-3 px-4 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-center block transition-all active:scale-95">
+              ទិញឯកសារមេរៀន $9.9 (ABA Payway)
+            </a>
+            <button onClick={() => { setShowPaywall(false); setIsGuest(false); }} className="w-full py-2.5 text-sm text-slate-600 hover:text-slate-800 font-semibold flex items-center justify-center gap-2">
+              <img src="https://www.google.com/favicon.ico" alt="" className="w-4 h-4" /> មានកូដរួចហើយ? ចូល Google + បញ្ចូលកូដ
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Navigation Bar */}
       <nav id="app-navbar" className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 shadow-sm z-30 sticky top-0">
         <div className="flex items-center gap-3">
@@ -1357,15 +1439,36 @@ ${columnsMessageScript}
             </button>
           )}
 
-          <button 
-            onClick={handleLogout} 
-            className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-red-100 transition-all active:scale-95 border border-red-100"
-            title="ចាកចេញ (Logout)"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          {user ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-red-100 transition-all active:scale-95 border border-red-100"
+              title="ចាកចេញ (Logout)"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={handleGoogleLogin}
+              className="flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-2 rounded-lg text-xs font-bold hover:bg-green-100 transition-all active:scale-95 border border-green-100"
+            >
+              <img src="https://www.google.com/favicon.ico" alt="" className="w-4 h-4" /> ចូល (Login)
+            </button>
+          )}
         </div>
       </nav>
+
+      {/* Guest banner — free-tier progress + buy */}
+      {!isApproved && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 md:px-6 py-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
+          <span className="text-amber-800 font-semibold">
+            🎁 ភ្ញៀវ៖ ប្រើបាន {Math.min(guestDone.length, GUEST_FREE_LIMIT)}/{GUEST_FREE_LIMIT} លំហាត់ឥតគិតថ្លៃ
+          </span>
+          <button onClick={() => setShowPaywall(true)} className="font-bold text-amber-700 underline hover:text-amber-900">
+            ទិញឯកសារពេញ $9.9 →
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 max-w-[1400px] w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6" id="primary-layout">
         
